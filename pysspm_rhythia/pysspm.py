@@ -5,6 +5,7 @@ from typing import BinaryIO
 import numpy as np
 from warnings import warn
 
+
 # TODO: (In order of priority)
 # Add typing support for library ✔️
 # add proper documentation on github
@@ -59,48 +60,48 @@ class SSPMParser:
     }
 
     def __init__(self):
-        self.exportOffset = 0
+        self.export_offset = 0
         self.Header = bytes([ # base header
             0x53, 0x53, 0x2b, 0x6d, # File type signature "SS+M"
             0x02, 0x00, # SSPM format version (0x02 or 0x01) Set to 2 by default
             0x00, 0x00, 0x00, 0x00, # 4 byte reserved space.
         ])
-        self.lastMs = None
+        self.last_ms = None
         self.metadata = {}
-        self.songName = None
-        self.requiresMod = 0
+        self.song_name = None
+        self.requires_mod = 0
         self.strict = False
-        self.coverBytes = None
+        self.cover_bytes = None
         self.Difficulty = 0
-        self.audioBytes = None
-        self.mapName = None
+        self.audio_bytes = None
+        self.map_name = None
         self.mappers = None
         self.Notes = None
-        self.mapID = None
-        self.customDataOffset = 0
+        self.map_ID = None
+        self.custom_data_offset = 0
 
     def _GetNextVariableString(self, data: BinaryIO, fourbytes: bool = False, encoding: str = "ASCII", V2: bool = True) -> str: # Why did this have a self variable??
         # Read 2 bytes for length (assuming little-endian format)
         length_bytes = data.read(2 if V2 else 1)
         
         # Convert the length bytes to an integer | Bugfix reading improper data
-        lengthF = np.int32(int.from_bytes(length_bytes, byteorder='little')) if fourbytes else np.int16(int.from_bytes(length_bytes, byteorder='little'))
+        length_f = np.int32(int.from_bytes(length_bytes, byteorder='little')) if fourbytes else np.int16(int.from_bytes(length_bytes, byteorder='little'))
         
         # Read the string of the determined length
-        finalString = data.read(lengthF)
+        final_string = data.read(length_f)
         
-        return finalString.decode(encoding=encoding)
+        return final_string.decode(encoding=encoding)
     
     def _NewLineTerminatedString(self, data: BinaryIO, encoding: str = "ASCII") -> str: # for SSPMv1
 
-        finalString = bytearray()
+        final_string = bytearray()
         while True:
             stringbyte = data.read(1) # keep going by one bit
             if stringbyte == b'\n': # once it reaches a new line, break
                 break
-            finalString.extend(stringbyte)
+            final_string.extend(stringbyte)
         
-        return finalString.decode(encoding=encoding)
+        return final_string.decode(encoding=encoding)
 
     
     def WriteSSPM(self, filename: str = None, forcemapid=False, debug: bool = False, **kwargs) -> bytearray | NoneType:
@@ -153,14 +154,14 @@ class SSPMParser:
         ])
 
         # configs
-        self.containsCover = b"\x01" if self.coverBytes != None else b"\x00" # 0 or 1
-        self.containsAudio = b"\x01" if self.audioBytes != None else b"\x00" # 0 or 1
-        self.requiresMod = b"\x01" if self.requiresMod == 1 or self.requiresMod == b"\x01" else b"\x00" # Who actually uses this though?
+        self.contains_cover = b"\x01" if self.cover_bytes != None else b"\x00" # 0 or 1
+        self.contains_audio = b"\x01" if self.audio_bytes != None else b"\x00" # 0 or 1
+        self.requires_mod = b"\x01" if self.requires_mod == 1 or self.requires_mod == b"\x01" else b"\x00" # Who actually uses this though?
         
         #print(self.Notes[-1][2])
-        self.lastMs = np.uint32(self.Notes[-1][2]).tobytes()  # np.uint32 object thus far | 4 bytes | base before getting proper one
-        self.noteCount = np.uint32(len(self.Notes)).tobytes() # bytes should be length of 4
-        self.markerCount = self.noteCount # nothing changed from last time
+        self.last_ms = np.uint32(self.Notes[-1][2]).tobytes()  # np.uint32 object thus far | 4 bytes | base before getting proper one
+        self.note_count = np.uint32(len(self.Notes)).tobytes() # bytes should be length of 4
+        self.marker_count = self.note_count # nothing changed from last time
 
         self.Difficulty = self.Difficulty if self.DIFFICULTIES.get(self.Difficulty) == None else self.DIFFICULTIES.get(self.Difficulty)
         self.Difficulty = self.Difficulty.to_bytes(1, 'little') if isinstance(self.Difficulty, int) else self.Difficulty
@@ -170,44 +171,44 @@ class SSPMParser:
 
         # good until here
         #self.mapID = 
-        self.songName = "sspmLib Song - author".encode("ASCII") if not self.songName else self.songName.encode("ASCII")
+        self.song_name = "sspmLib Song - author".encode("ASCII") if not self.song_name else self.song_name.encode("ASCII")
 
         if not forcemapid:
-            self.mapID = f"{'_'.join(self.mappers)}_{self.mapName.replace(' ', '_')}".encode("ASCII") # combines mappers and map name to get the id.
+            self.map_ID = f"{'_'.join(self.mappers)}_{self.map_name.replace(' ', '_')}".encode("ASCII") # combines mappers and map name to get the id.
         else:
-            self.mapID = self.mapID.encode("ASCII")
+            self.map_ID = self.map_ID.encode("ASCII")
             
-        self.mapIDf = len(self.mapID).to_bytes(2, 'little')
-        self.mapName = self.mapName.encode("ASCII")
-        self.mapNameF = len(self.mapName).to_bytes(2, 'little')
-        self.songNameF = len(self.songName).to_bytes(2, 'little')
+        self.map_ID_f = len(self.map_ID).to_bytes(2, 'little')
+        self.map_name = self.map_name.encode("ASCII")
+        self.map_name_f = len(self.map_name).to_bytes(2, 'little')
+        self.song_name_f = len(self.song_name).to_bytes(2, 'little')
 
-        self.mapperCountf = len(self.mappers).to_bytes(2, 'little')
+        self.mapper_count_f = len(self.mappers).to_bytes(2, 'little')
         #self.mappersf = '\n'.join(self.mappers).encode('ASCII') # Possible bug | maybe include breakchar like \n
-        mappersf = bytearray()
+        mappers_f = bytearray()
 
         # Iterate through each mapper in the mappers list
         for mapper in self.mappers:
             # Encode the mapper string to ASCII bytes
-            mapperf = mapper.encode('ASCII')
+            mapper_f = mapper.encode('ASCII')
             
             # Get the length of the mapper string as a 2-byte little-endian value
-            mapperLength = len(mapperf).to_bytes(2, 'little')
+            mapper_length = len(mapper_f).to_bytes(2, 'little')
             
             # Concatenate the length and the actual mapper string
-            mapperFinal = mapperLength + mapperf
+            mapper_final = mapper_length + mapper_f
             
             # Append to the mappersf byte array
-            mappersf.extend(mapperFinal)
+            mappers_f.extend(mapper_final)
 
         # Store the result in the instance variable
-        self.mappersf = bytes(mappersf)
+        self.mappers_f = bytes(mappers_f)
 
-        self.strings = self.mapIDf+self.mapID+self.mapNameF+self.mapName+self.songNameF+self.songName+self.mapperCountf+self.mappersf # merge values into a string because we are done with this section
+        self.strings = self.map_ID_f+self.map_ID+self.map_name_f+self.map_name+self.song_name_f+self.song_name+self.mapper_count_f+self.mappers_f # merge values into a string because we are done with this section
         if debug:
             print("Strings loaded")
 
-        self.customData = b"\x00\x00" # 2 bytes, no custom data supported right neoww
+        self.custom_data = b"\x00\x00" # 2 bytes, no custom data supported right neoww
 
         # FEATURE REQUEST: Add support for custom difficulty here.
 
@@ -253,16 +254,16 @@ class SSPMParser:
             self.Markers += finalMarker"""
 
         count = 0
-        totalNotes = len(self.Notes)
+        total_notes = len(self.Notes)
         
         markers = bytearray()
-        lastms = 0
+        last_ms = 0
         
         for nx, ny, nms in self.Notes:
             count += 1
             
             if debug and count % 1000 == 0:
-                print(f"Notes completed: {count}/{totalNotes}", end="\r", flush=True)
+                print(f"Notes completed: {count}/{total_notes}", end="\r", flush=True)
             
             rounded_nx = round(nx)
             rounded_ny = round(ny)
@@ -270,7 +271,7 @@ class SSPMParser:
             rounded_ny_2 = round(ny, 2)
             
             # Calculate the bytes
-            ms_bytes = np.uint32(nms + self.exportOffset).tobytes()
+            ms_bytes = np.uint32(nms + self.export_offset).tobytes()
             marker_type = b'\x00'
             identifier = b'\x00' if (rounded_nx == rounded_nx_2 and rounded_ny == rounded_ny_2) else b'\x01'
             
@@ -280,69 +281,69 @@ class SSPMParser:
             else:
                 x_bytes = np.float32(nx).tobytes()
                 y_bytes = np.float32(ny).tobytes()
-            if lastms < nms:
-                lastms = nms
+            if last_ms < nms:
+                last_ms = nms
             
             final_marker = ms_bytes + marker_type + identifier + x_bytes + y_bytes
             markers.extend(final_marker)
         
-        self.lastMs = np.uint32(lastms).tobytes() # because list is not in order.
+        self.last_ms = np.uint32(last_ms).tobytes() # because list is not in order.
 
         if debug:
             print("All pointers finished")
 
 
         # adding everything together
-        metadata = self.lastMs + self.noteCount + self.markerCount + self.Difficulty + b"\x00\x00" + self.containsAudio + self.containsCover + self.requiresMod # level rating Not fully implemented yet 
+        metadata = self.last_ms + self.note_count + self.marker_count + self.Difficulty + b"\x00\x00" + self.contains_audio + self.contains_cover + self.requires_mod # level rating Not fully implemented yet 
         offset = len(self.Header) + 20 + len(metadata) + 80 + len(self.strings)
         # pointers
-        self.customDataOffset = np.uint64(offset).tobytes()
-        self.customDataLength = np.uint64(len(self.customData)).tobytes()
-        offset+= len(self.customData)
+        self.custom_data_offset = np.uint64(offset).tobytes()
+        self.custom_data_length = np.uint64(len(self.custom_data)).tobytes()
+        offset+= len(self.custom_data)
 
         
-        self.audioOffset = np.uint64(offset).tobytes()
-        self.audioLength = np.uint64(len(self.audioBytes)).tobytes() if self.containsAudio == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found | Possible bug if no audio found, and reading special block fails. | may default to start of file.
-        offset+= len(self.audioBytes) if self.containsAudio == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
-        self.audioBytes = b'' if self.audioBytes == None else self.audioBytes
+        self.audio_offset = np.uint64(offset).tobytes()
+        self.audio_length = np.uint64(len(self.audio_bytes)).tobytes() if self.contains_audio == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found | Possible bug if no audio found, and reading special block fails. | may default to start of file.
+        offset+= len(self.audio_bytes) if self.contains_audio == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
+        self.audio_bytes = b'' if self.audio_bytes == None else self.audio_bytes
 
-        self.coverOffset = np.uint64(offset).tobytes()
-        self.coverLength = np.uint64(len(self.coverBytes)).tobytes() if self.containsCover == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found 
-        offset+= len(self.coverBytes) if self.containsCover == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
-        self.coverBytes = b'' if self.coverBytes == None else self.coverBytes
+        self.cover_offset = np.uint64(offset).tobytes()
+        self.cover_length = np.uint64(len(self.cover_bytes)).tobytes() if self.contains_cover == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found 
+        offset+= len(self.cover_bytes) if self.contains_cover == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
+        self.cover_bytes = b'' if self.cover_bytes == None else self.cover_bytes
 
-        self.NoteDefinition = "ssp_note".encode("ASCII")
-        self.NoteDefinitionf = len(self.NoteDefinition).to_bytes(2, 'little') + self.NoteDefinition
-        self.markerDefStart = b"\x01"
-        self.markerDefEnd = b"\x01\x07\x00" # var markerDefEnd = new byte[] { 0x01, /* one value */ 0x07, /* data type 07 - note */ 0x00 /* end of definition */ };
+        self.note_definition = "ssp_note".encode("ASCII")
+        self.note_definition_f = len(self.note_definition).to_bytes(2, 'little') + self.note_definition
+        self.marker_def_start = b"\x01"
+        self.marker_def_end = b"\x01\x07\x00" # var markerDefEnd = new byte[] { 0x01, /* one value */ 0x07, /* data type 07 - note */ 0x00 /* end of definition */ };
 
-        self.markerDefinitions = self.markerDefStart+self.NoteDefinitionf+self.markerDefEnd
-        self.markerDefinitionsOffset = np.uint64(offset).tobytes()
-        self.markerDefinitionsLength = np.uint64(len(self.markerDefinitions)).tobytes()
-        offset+=len(self.markerDefinitions)
+        self.marker_definitions = self.marker_def_start+self.note_definition_f+self.marker_def_end
+        self.marker_definitions_offset = np.uint64(offset).tobytes()
+        self.marker_definitions_length = np.uint64(len(self.marker_definitions)).tobytes()
+        offset+=len(self.marker_definitions)
 
         # notes n stuff
         self.Markers = markers
-        self.markerOffset = np.uint64(offset).tobytes()
-        self.markerLength = np.uint64(len(self.Markers)).tobytes()
+        self.marker_offset = np.uint64(offset).tobytes()
+        self.marker_length = np.uint64(len(self.Markers)).tobytes()
 
         # hashing
-        self.markerSet = self.markerDefinitions+self.Markers
-        sHash = sha1(self.markerSet).digest()
+        self.marker_set = self.marker_definitions+self.Markers
+        s_hash = sha1(self.marker_set).digest()
 
         pointers = b''
-        pointers+=self.customDataOffset+self.customDataLength+self.audioOffset+self.audioLength+self.coverOffset+self.coverLength+self.markerDefinitionsOffset+self.markerDefinitionsLength+self.markerOffset+self.markerLength
+        pointers+=self.custom_data_offset+self.custom_data_length+self.audio_offset+self.audio_length+self.cover_offset+self.cover_length+self.marker_definitions_offset+self.marker_definitions_length+self.marker_offset+self.marker_length
 
         if debug:
-            print(self.lastMs)
+            print(self.last_ms)
             print(metadata)
             print(pointers)
             print(self.strings)
-            print(self.customData)
-            print(self.audioBytes[0:10])
-            print(self.coverBytes[0:10])
+            print(self.custom_data)
+            print(self.audio_bytes[0:10])
+            print(self.cover_bytes[0:10])
 
-        self.SSPMData = self.Header+sHash+metadata+pointers+self.strings+self.customData+self.audioBytes+self.coverBytes+self.markerDefinitions+self.Markers
+        self.SSPMData = self.Header+s_hash+metadata+pointers+self.strings+self.custom_data+self.audio_bytes+self.cover_bytes+self.marker_definitions+self.Markers
         
         if filename:
             with open(filename, 'wb') as f:
@@ -352,7 +353,7 @@ class SSPMParser:
         return self.SSPMData
         
 
-        raise NotImplementedError("Writing SSPM files at this time is being activly worked on. This currently does not function yet") # Old
+        raise NotImplementedError("Writing SSPM files at this time is being actively worked on. This currently does not function yet") # Old
 
     def ReadSSPM(self, file: str | BinaryIO, debug: bool = False):
         """
@@ -382,20 +383,20 @@ class SSPMParser:
 
         """
 
-        self.coverBytes = None
-        self.audioBytes = None
+        self.cover_bytes = None
+        self.audio_bytes = None
 
         if isinstance(file, str): # If its a directory we convert it.
             with open(file, "rb") as f:
-                fileBytes = BytesIO(f.read())
+                file_bytes = BytesIO(f.read())
         else:
-            fileBytes = file
+            file_bytes = file
                 
         self.Header = { # all ascii
-            "Signature": fileBytes.read(4),
-            "Version": 2 if fileBytes.read(2) == b'\x02\x00' else 1, # checking version of SSPM file
+            "Signature": file_bytes.read(4),
+            "Version": 2 if file_bytes.read(2) == b'\x02\x00' else 1, # checking version of SSPM file
         }
-        self.Header["Reserve"] = fileBytes.read(4) if self.Header.get("Version") == 2 else fileBytes.read(2), # reserve (0x00 00 00 00) in v2, otherwise (0x00 00)
+        self.Header["Reserve"] = file_bytes.read(4) if self.Header.get("Version") == 2 else file_bytes.read(2), # reserve (0x00 00 00 00) in v2, otherwise (0x00 00)
 
 
         # File check to make sure everything in the header is A-OK
@@ -405,114 +406,114 @@ class SSPMParser:
         if self.Header.get("Signature") != b"\x53\x53\x2b\x6d":
             raise ValueError("SS+M signature was not found. What was found instead:", self.Header.get("Signature"))
         if self.Header.get("Version") == 2:
-            self._ProcessSSPMV2(fileBytes)
+            self._ProcessSSPMV2(file_bytes)
         elif self.Header.get("Version") == 1:
-            self._ProcessSSPMV1(fileBytes)
+            self._ProcessSSPMV1(file_bytes)
         else:
             raise ValueError("SSPM version does not match known versions. Versions (1, 2) FOUND:", self.Header.get("Version"))
 
 
         return self
     
-    def _ProcessSSPMV2(self, fileBytes: BinaryIO):
+    def _ProcessSSPMV2(self, file_bytes: BinaryIO):
         
         # static metadata
 
-        self.Hash = fileBytes.read(20)
-        self.lastMs = int.from_bytes(fileBytes.read(4), 'little') # 32bit uint
-        self.noteCount = fileBytes.read(4) # 32bit uint
-        self.markerCount = fileBytes.read(4) # No clue what this is, ill figure it out | 32bit uint
+        self.Hash = file_bytes.read(20)
+        self.last_ms = int.from_bytes(file_bytes.read(4), 'little') # 32bit uint
+        self.note_count = file_bytes.read(4) # 32bit uint
+        self.marker_count = file_bytes.read(4) # No clue what this is, ill figure it out | 32bit uint
         
-        self.Difficulty = fileBytes.read(1) # 0x00 01 02 03 04 05
-        self.mapRating = fileBytes.read(2) # 16bit uint
-        self.containsAudio = fileBytes.read(1) # 0x00 01?
-        self.containsCover = fileBytes.read(1) # 0x00 01?
-        self.requiresMod = fileBytes.read(1) # 0x00 01?
+        self.Difficulty = file_bytes.read(1) # 0x00 01 02 03 04 05
+        self.map_rating = file_bytes.read(2) # 16bit uint
+        self.contains_audio = file_bytes.read(1) # 0x00 01?
+        self.contains_cover = file_bytes.read(1) # 0x00 01?
+        self.requires_mod = file_bytes.read(1) # 0x00 01?
 
         # pointers | If not present then is left as 8 bytes of 0
-        self.customDataOffset = fileBytes.read(8)
-        self.customDataLength = fileBytes.read(8)
-        self.audioOffset = fileBytes.read(8)
-        self.audioLength = fileBytes.read(8)
-        self.coverOffset = fileBytes.read(8)
-        self.coverLength = fileBytes.read(8)
-        self.markerDefinitionsOffset = fileBytes.read(8)
-        self.markerDefinitionsLength = fileBytes.read(8)
-        self.markerOffset = fileBytes.read(8)
-        self.markerLength = fileBytes.read(8)
+        self.custom_data_offset = file_bytes.read(8)
+        self.custom_data_length = file_bytes.read(8)
+        self.audio_offset = file_bytes.read(8)
+        self.audio_length = file_bytes.read(8)
+        self.cover_offset = file_bytes.read(8)
+        self.cover_length = file_bytes.read(8)
+        self.marker_definitions_offset = file_bytes.read(8)
+        self.marker_definitions_length = file_bytes.read(8)
+        self.marker_offset = file_bytes.read(8)
+        self.marker_length = file_bytes.read(8)
 
         # VariableLength Items..
-        self.mapID = self._GetNextVariableString(fileBytes).replace(",", "")
-        self.mapName = self._GetNextVariableString(fileBytes)
-        self.songName = self._GetNextVariableString(fileBytes)
+        self.map_ID = self._GetNextVariableString(file_bytes).replace(",", "")
+        self.map_name = self._GetNextVariableString(file_bytes)
+        self.song_name = self._GetNextVariableString(file_bytes)
 
-        for i in range(len(self.mapID)): # getting mapID
-            if self.mapID[i] in self.INVALID_CHARS: # Create invalidChars thing
-                self.mapID = self.mapID[:i] + '_' + self.mapID[i+1:]
+        for i in range(len(self.map_ID)): # getting mapID
+            if self.map_ID[i] in self.INVALID_CHARS: # Create invalidChars thing
+                self.map_ID = self.map_ID[:i] + '_' + self.map_ID[i+1:]
         
-        mapperCount = fileBytes.read(2)
-        self.mapperCountFloat = int.from_bytes(mapperCount, byteorder="little") #np.uint16(mapperCount)
+        mapper_count = file_bytes.read(2)
+        self.mapper_count_float = int.from_bytes(mapper_count, byteorder="little") #np.uint16(mapperCount)
         self.mappers = [] # for now
         
-        for i in range(self.mapperCountFloat): # Can have multiple mappers in a file.
+        for i in range(self.mapper_count_float): # Can have multiple mappers in a file.
             
             if True:
             #try: # temporary solution until I figure out whats happening
-                self.mappers.append(self._GetNextVariableString(fileBytes))
+                self.mappers.append(self._GetNextVariableString(file_bytes))
             #except:
             #    pass
         try:
             # Oh god Custom data.... | Only supports custom difficulty thus far
-            customData = fileBytes.read(2) # ??
-            self.customDataTotalLength = np.uint16(customData)
+            custom_data = file_bytes.read(2) # ??
+            self.custom_data_total_length = np.uint16(custom_data)
             
-            for i in range(self.customDataTotalLength):
-                field = self._GetNextVariableString(fileBytes)
-                id = fileBytes.read(1)
+            for i in range(self.custom_data_total_length):
+                field = self._GetNextVariableString(file_bytes)
+                id = file_bytes.read(1)
                 if id[0] == "\x00": # no 0x08 and 0x0a according to SSQE...
                     continue
                 elif id[0] == "\x01":
-                    fileBytes.read(1) # skipping
+                    file_bytes.read(1) # skipping
                 elif id[0] == "\x02":
-                    fileBytes.read(2) # skipping
+                    file_bytes.read(2) # skipping
                 elif id[0] == "\x03":
                     pass
                 elif id[0] == "\x04":
                     pass
                 elif id[0] == "\x05":
-                    fileBytes.read(4) # skipping
+                    file_bytes.read(4) # skipping
                 elif id[0] == "\x06":
-                    fileBytes.read(8) # skipping
+                    file_bytes.read(8) # skipping
                 elif id[0] == "\x07":
-                    caseType = fileBytes.read(1)
-                    if caseType == "\x00":
-                        fileBytes.read(2)
-                    elif caseType == "\x01":
-                        fileBytes.read(2) # Possible Bug: In SSQE, reads only 2 bytes from 16 sized buffer...
+                    case_type = file_bytes.read(1)
+                    if case_type == "\x00":
+                        file_bytes.read(2)
+                    elif case_type == "\x01":
+                        file_bytes.read(2) # Possible Bug: In SSQE, reads only 2 bytes from 16 sized buffer...
                     break
                 elif id[0] == "\x08":
-                    self._GetNextVariableString(fileBytes)
+                    self._GetNextVariableString(file_bytes)
                     break
                 elif id[0] == "\x09": # Custom difficulty. NOT FULLY IMPLEMENTED
                     if self.strict:
                         warn("Custom difficulty in V2 and V1 Not supported. Was found in sspm. View raw form by using .CustomDifficulty @self", Warning)
-                    self.CustomDifficulty = self._GetNextVariableString(fileBytes)
+                    self.custom_difficulty = self._GetNextVariableString(file_bytes)
                     
                 elif id[0] == "\x0a":
-                    self._GetNextVariableString(fileBytes, fourbytes=True) # BUG: Make sure to implement fourbytes method here. Shouldnt cause issues right now...
+                    self._GetNextVariableString(file_bytes, fourbytes=True) # BUG: Make sure to implement fourbytes method here. Shouldnt cause issues right now...
                     break
                 elif id[0] == "\x0b":
                     warn("CustomBlocks in V2 and V1 Not supported. Was found in sspm.", Warning)
-                    self._GetNextVariableString(fileBytes, fourbytes=True) # BUG: Make sure to implement fourbytes method here.
+                    self._GetNextVariableString(file_bytes, fourbytes=True) # BUG: Make sure to implement fourbytes method here.
                     break
                 elif id[0] == "\x0c": # no more PLEASEEE
                     warn("CustomBlocks in V2 and V1 Not supported. Was found in sspm.", Warning)
 
-                    fileBytes.read(1)
-                    valueLength = fileBytes.read(4)
-                    valueLengthF = np.uint32(valueLength)
+                    file_bytes.read(1)
+                    value_length = file_bytes.read(4)
+                    value_length_f = np.uint32(value_length)
                     
-                    fileBytes.read(valueLengthF) # I hope???
+                    file_bytes.read(value_length_f) # I hope???
                     break
 
         except Exception as e:
@@ -520,88 +521,88 @@ class SSPMParser:
                 warn("Couldnt properly read customData in V2/V1 sspm. Fell back to audio pointer", BytesWarning)
     
         # If all fails, fallback to audio pointer
-        self.audioOffsetF = np.int64(int.from_bytes(self.audioOffset, byteorder='little'))
+        self.audio_offset_f = np.int64(int.from_bytes(self.audio_offset, byteorder='little'))
         
         # Get pointer from bytes
-        fileBytes.seek(self.audioOffsetF)
+        file_bytes.seek(self.audio_offset_f)
 
         # reading optional data...
         #print(self.containsAudio[0])
-        if self.containsAudio[0] == 1: # found audio
-            self.totalAudioLengthF = np.int64(int.from_bytes(self.audioLength, 'little'))
+        if self.contains_audio[0] == 1: # found audio
+            self.total_audio_length_f = np.int64(int.from_bytes(self.audio_length, 'little'))
             
-            self.audioBytes = fileBytes.read(self.totalAudioLengthF)
+            self.audio_bytes = file_bytes.read(self.total_audio_length_f)
             #print(fileBytes.tell())
 
-        if self.containsCover[0] == 1: # True
-            self.totalCoverLengthF = np.int64(int.from_bytes(self.coverLength, 'little'))
+        if self.contains_cover[0] == 1: # True
+            self.total_cover_length_f = np.int64(int.from_bytes(self.cover_length, 'little'))
             #print(self.totalCoverLengthF)
-            self.coverBytes = fileBytes.read(self.totalCoverLengthF)
+            self.cover_bytes = file_bytes.read(self.total_cover_length_f)
             #print(fileBytes.tell())
 
 
         # LAST ANNOYING PART!!!!!! MARKERS..
-        self.mapData = self.mapID
+        self.map_data = self.map_ID
 
         # Reading markers
-        self.hasNotes = False
-        numDefinitions = fileBytes.read(1)
+        self.has_notes = False
+        num_definitions = file_bytes.read(1)
         #print(numDefinitions[0])
 
-        for i in range(numDefinitions[0]): # byte form
-            definition = self._GetNextVariableString(fileBytes)#, encoding="UTF-8")
-            self.hasNotes |= definition == "ssp_note" and i == 0 # bitwise shcesadnigans (its 1:30am for me)
+        for i in range(num_definitions[0]): # byte form
+            definition = self._GetNextVariableString(file_bytes)#, encoding="UTF-8")
+            self.has_notes |= definition == "ssp_note" and i == 0 # bitwise shcesadnigans (its 1:30am for me)
 
-            numValues = fileBytes.read(1)
+            num_values = file_bytes.read(1)
 
-            definitionData = int.from_bytes(b"\x01", 'little')
-            while definitionData != int.from_bytes(b"\x00", 'little'): # Read until null BUG HERE
-                definitionData = int.from_bytes(fileBytes.read(1), 'little')
+            definition_data = int.from_bytes(b"\x01", 'little')
+            while definition_data != int.from_bytes(b"\x00", 'little'): # Read until null BUG HERE
+                definition_data = int.from_bytes(file_bytes.read(1), 'little')
         
-        if not self.hasNotes: # No notes
-            return self.mapData
+        if not self.has_notes: # No notes
+            return self.map_data
         
         # process notes
         #print("| | |", fileBytes.tell())
-        noteCountF = np.uint32(int.from_bytes(self.noteCount, 'little'))
+        note_count_f = np.uint32(int.from_bytes(self.note_count, 'little'))
         Notes = []
-        isQuantumChecker = False
+        is_quantum_checker = False
 
-        for i in range(noteCountF): # Could be millions of notes. Make sure to keep optimized
-            ms = fileBytes.read(4)
-            markerType = fileBytes.read(1)
+        for i in range(note_count_f): # Could be millions of notes. Make sure to keep optimized
+            ms = file_bytes.read(4)
+            marker_type = file_bytes.read(1)
             #print(fileBytes.tell())
             
-            isQuantum = int.from_bytes(fileBytes.read(1), 'little')
+            is_quantum = int.from_bytes(file_bytes.read(1), 'little')
             
 
-            xF = None
-            yF = None
+            x_f = None
+            y_f = None
 
-            if isQuantum == 0:
-                x = int.from_bytes(fileBytes.read(1), 'little')
-                y = int.from_bytes(fileBytes.read(1), 'little')
-                xF = x
-                yF = y
+            if is_quantum == 0:
+                x = int.from_bytes(file_bytes.read(1), 'little')
+                y = int.from_bytes(file_bytes.read(1), 'little')
+                x_f = x
+                y_f = y
 
             else:
-                isQuantumChecker = True
+                is_quantum_checker = True
 
-                x = fileBytes.read(4)
-                y = fileBytes.read(4)
+                x = file_bytes.read(4)
+                y = file_bytes.read(4)
 
-                xF = np.frombuffer(x, dtype=np.float32)[0]
-                yF = np.frombuffer(y, dtype=np.float32)[0]
+                x_f = np.frombuffer(x, dtype=np.float32)[0]
+                y_f = np.frombuffer(y, dtype=np.float32)[0]
 
                 #xF = np.single(x) # numpy in clutch ngl
                 #yF = np.single(y)
             
-            msF = np.uint32(int.from_bytes(ms, 'little'))
+            ms_f = np.uint32(int.from_bytes(ms, 'little'))
 
-            Notes.append((xF, yF, msF)) # F = converted lol
+            Notes.append((x_f, y_f, ms_f)) # F = converted lol
 
         self.Notes = sorted(Notes, key=lambda n: n[2]) # Sort by time
-        self.isQuantum = isQuantumChecker
+        self.is_quantum = is_quantum_checker
 
         return self
 
@@ -609,17 +610,17 @@ class SSPMParser:
         """
         Converts Notes to the standard sound space text file form. Commonly used in Roblox sound space
         """
-        textString = ''
+        text_string = ''
         for x, y, ms in self.Notes:
-            if textString == '':
-                textString+=f",{x}|{y}|{ms}"
+            if text_string == '':
+                text_string+=f",{x}|{y}|{ms}"
             else:
-                textString+=f",{x}|{y}|{ms}"
+                text_string+=f",{x}|{y}|{ms}"
             
-        return textString
+        return text_string
 
     
-    def _ProcessSSPMV1(self, fileBytes: BinaryIO):
+    def _ProcessSSPMV1(self, file_bytes: BinaryIO):
         """
         just going to note, i will be using some of the self variables
         for compatibility with SSPMv2 (such as containsAudio, etc), and 
@@ -632,93 +633,93 @@ class SSPMParser:
 
         # start of metadata
 
-        self.mapID = self._NewLineTerminatedString(fileBytes).replace(",", "")
-        self.mapName = self._NewLineTerminatedString(fileBytes)
-        self.songName = self.mapName # lol
-        self.mappers = self._NewLineTerminatedString(fileBytes).split(", ") # mappers arent in an array, so i will just split
+        self.map_ID = self._NewLineTerminatedString(file_bytes).replace(",", "")
+        self.map_name = self._NewLineTerminatedString(file_bytes)
+        self.song_name = self.mapName # lol
+        self.mappers = self._NewLineTerminatedString(file_bytes).split(", ") # mappers arent in an array, so i will just split
 
-        self.lastMs = fileBytes.read(4)
-        self.noteCount = fileBytes.read(4)
-        self.Difficulty = fileBytes.read(1)
+        self.last_ms = file_bytes.read(4)
+        self.note_count = file_bytes.read(4)
+        self.Difficulty = file_bytes.read(1)
 
         # end of metadata
         
         # start of file data
 
-        self.coverType = int.from_bytes(fileBytes.read(1), byteorder='little')
+        self.cover_type = int.from_bytes(file_bytes.read(1), byteorder='little')
 
-        self.containsCover = None
-        self.coverLength = None
-        self.coverBytes = None
+        self.contains_cover = None
+        self.cover_length = None
+        self.cover_bytes = None
 
-        match self.coverType:
+        match self.cover_type:
             case 2: # PNG
-                self.containsCover = b"\x01"
+                self.contains_cover = b"\x01"
 
-                self.coverLength = fileBytes.read(8)
-                coverLengthtoInt = np.int64(int.from_bytes(self.coverLength, 'little'))
+                self.cover_length = file_bytes.read(8)
+                cover_length_to_int = np.int64(int.from_bytes(self.coverLength, 'little'))
 
-                self.coverBytes = fileBytes.read(coverLengthtoInt)
+                self.cover_bytes = file_bytes.read(cover_length_to_int)
             case _: # for no cover, or non supported format
-                self.containsCover = b"\x00"
+                self.contains_cover = b"\x00"
 
-        self.audioType = int.from_bytes(fileBytes.read(1), 'little')
+        self.audio_type = int.from_bytes(file_bytes.read(1), 'little')
 
-        self.containsAudio = None
-        self.audioLength = None
-        self.audioBytes = None
+        self.contains_audio = None
+        self.audio_length = None
+        self.audio_bytes = None
 
-        match self.audioType:
+        match self.audio_type:
             case 0: # no Audio
-                self.containsAudio = b"\x00"
+                self.contains_audio = b"\x00"
             case 1: # Audio! :)
-                self.containsAudio = b"\x01"
+                self.contains_audio = b"\x01"
 
-                self.audioLength = fileBytes.read(8)
-                audioLengthtoInt = int.from_bytes(self.audioLength, 'little')
+                self.audio_length = file_bytes.read(8)
+                audio_length_to_int = int.from_bytes(self.audio_length, 'little')
 
-                self.audioBytes = fileBytes.read(audioLengthtoInt) # must be mp3 or OGG
+                self.audio_bytes = file_bytes.read(audio_length_to_int) # must be mp3 or OGG
 
         # end of file data
 
         # start of note data
 
-        noteCounttoInt = int.from_bytes(self.noteCount, 'little')
+        note_count_to_int = int.from_bytes(self.note_count, 'little')
         Notes = []
-        isQuantumChecker = False
+        is_quantum_checker = False
 
-        for i in range(noteCounttoInt):
-            ms = fileBytes.read(4)
+        for i in range(note_count_to_int):
+            ms = file_bytes.read(4)
             
             # i can just copy and paste the rest of this since its the same
 
-            isQuantum = int.from_bytes(fileBytes.read(1), 'little')
+            is_quantum = int.from_bytes(file_bytes.read(1), 'little')
 
-            xF = None
-            yF = None
+            x_f = None
+            y_f = None
 
-            if isQuantum == 0:
-                x = int.from_bytes(fileBytes.read(1), 'little')
-                y = int.from_bytes(fileBytes.read(1), 'little')
-                xF = x
-                yF = y
+            if is_quantum == 0:
+                x = int.from_bytes(file_bytes.read(1), 'little')
+                y = int.from_bytes(file_bytes.read(1), 'little')
+                x_f = x
+                y_f = y
 
             else:
-                isQuantumChecker = True
+                is_quantum_checker = True
 
-                x = fileBytes.read(4)
-                y = fileBytes.read(4)
+                x = file_bytes.read(4)
+                y = file_bytes.read(4)
 
-                xF = np.frombuffer(x, dtype=np.float32)[0]
-                yF = np.frombuffer(y, dtype=np.float32)[0]
+                x_f = np.frombuffer(x, dtype=np.float32)[0]
+                y_f = np.frombuffer(y, dtype=np.float32)[0]
             
-            msF = np.uint32(int.from_bytes(ms, 'little'))
+            ms_f = np.uint32(int.from_bytes(ms, 'little'))
 
-            Notes.append((xF, yF, msF))
+            Notes.append((x_f, y_f, ms_f))
 
         
         self.Notes = sorted(Notes, key=lambda n: n[2]) # Sort by time
-        self.isQuantum = isQuantumChecker
+        self.is_quantum = is_quantum_checker
 
         return self
         

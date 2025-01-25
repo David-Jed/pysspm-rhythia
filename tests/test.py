@@ -31,38 +31,38 @@ def test_read_sspm(): # Basic reading of sspm file format
 def test_read_write_sspm(): # Writing a new SSPM file from parsed notes
     parser = SSPMParser()
     first = parser.ReadSSPM("./tests/Test.sspm")
-    parser.WriteSSPM("./tests/Test2.sspm", mapName="KOCMOC_MAP_TESTING_SSPMLIB")
+    parser.WriteSSPM("./tests/Test2.sspm", map_name="KOCMOC_MAP_TESTING_SSPMLIB")
     second = parser.ReadSSPM("./tests/Test.sspm")
 
     # comparing values between first and second. should all be the same
-    assert first.audioBytes == second.audioBytes
+    assert first.audio_bytes == second.audio_bytes
     print("Audio checked")
     assert first.Notes == second.Notes
     print("Notes checked")
-    assert first.lastMs == second.lastMs
+    assert first.last_ms == second.last_ms
     print("lastMs checked")
-    assert first.coverBytes == second.coverBytes
-    print("coverBytes checked")
+    assert first.cover_bytes == second.cover_bytes
+    print("cover_bytes checked")
 
     parser = SSPMParser()
     first = parser.ReadSSPM("./tests/Test.sspm")
-    parser.WriteSSPM("./tests/Test2.sspm", mapName="KOCMOC_MAP_TESTING_SSPMLIB", audioBytes=SHAREDAUDIO, coverBytes=SHAREDCOVER)
+    parser.WriteSSPM("./tests/Test2.sspm", mapName="KOCMOC_MAP_TESTING_SSPMLIB", audio_bytes=SHAREDAUDIO, cover_bytes=SHAREDCOVER)
     second = parser.ReadSSPM("./tests/Test.sspm")
 
 # This last test starts from scratch, and applies all the values into the write function.
 def test_write_sspm_from_scratch_no_cover(): # Writing a new SSPM file from scratch
     parser = SSPMParser()
-    parser.WriteSSPM("./tests/test_write_n_cover.sspm", coverBytes=None, audioBytes=SHAREDAUDIO, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
+    parser.WriteSSPM("./tests/test_write_n_cover.sspm", cover_bytes=None, audio_bytes=SHAREDAUDIO, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
     parser.ReadSSPM("./tests/test_write_n_cover.sspm")
 
 def test_write_sspm_from_scratch_no_audio(): # Writing a new SSPM file from scratch
     parser = SSPMParser()
-    parser.WriteSSPM("./tests/test_write_n_audio.sspm", coverBytes=SHAREDCOVER, audioBytes=SHAREDAUDIO, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
+    parser.WriteSSPM("./tests/test_write_n_audio.sspm", cover_bytes=SHAREDCOVER, audio_bytes=SHAREDAUDIO, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
     parser.ReadSSPM("./tests/test_write_n_audio.sspm")
 
 def test_write_sspm_from_scratch_no_cover_audio(): # Writing a new SSPM file from scratch
     parser = SSPMParser()
-    parser.WriteSSPM("./tests/test_write_n_audio_cover.sspm", coverBytes=None, audioBytes=None, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
+    parser.WriteSSPM("./tests/test_write_n_audio_cover.sspm", cover_bytes=None, audio_bytes=None, Difficulty="N/A", mapName="Test run level", mappers=["Test_Pysspm_Rhythia", "Test"], Notes=SHAREDNOTES)
     parser.ReadSSPM("./tests/test_write_n_audio_cover.sspm")
 
 def test_EXTRAS_conversion():
