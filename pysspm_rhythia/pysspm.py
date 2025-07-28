@@ -1,41 +1,283 @@
+from dataclasses import dataclass, field
+from enum import Enum
 from io import BytesIO
 from hashlib import sha1
 from types import NoneType
-from typing import BinaryIO
+from typing import BinaryIO, Annotated, List, Literal, Tuple, Dict, Union
 import numpy as np
 from warnings import warn
 
-# TODO: (In order of priority)
-# Add typing support for library ✔️
-# add proper documentation on github
-# add proper documentation in code ✔️
-# add loading of sspmV2  ✔️
-# add support for creating sspmV2 ✔️
-# clean up unused variables from @self ✔️
-# add support for sspmv1 loading
-# support multiple version of sspm
-# add custom block support in loading
-# fix small bugs...
+# BIG CHANGE: REFACTORED CODEBASE
 
-"""
-Stolen from the SSQE version lol
-            var data = new List<byte>(); // final converted data
-            data.AddRange(header);
-            data.AddRange(hash);
-            data.AddRange(metadata);
-            data.AddRange(pointers);
-            data.AddRange(strings);
-            data.AddRange(customData);
-            data.AddRange(audio);
-            data.AddRange(cover);
-            data.AddRange(markerDefinitions);
-            data.AddRange(markers);
-            return data.ToArray();
-"""
+class Difficulty(Enum):
+    """
+    ### Class handling all difficulty parameters withing SSPM filetypes
+
+    - na = 0
+    - easy = 1
+    - medium = 2
+    - hard = 3
+    - logic = 4
+    - tasukete = 5
+    - brrrrr = 5
+
+    > Note: brrrrr filetype is the same as tasukete, just used within roblox sound space <br>
+    """
+    na      = 0x00
+    easy    = 0x01
+    medium  = 0x02
+    hard    = 0x03
+    logic   = 0x04
+    tasukete= 0x05
+    brrrrr   = 0x05
+
+    def __str__(self):
+        return self.name
+
+@dataclass
+class Header:
+    """
+    # SSPM File Header
+    contains:
+    - signature | SS+M | 4 bytes 
+    - version | 2, or 1 | 2 bytes
+    - reserve | 0x00 | 4 bytes
+    """
+    signature = bytes([0x53, 0x53, 0x2b, 0x6d])
+    version = 2 #bytes([0x02, 0x00])
+    reserve = bytes([0x00, 0x00, 0x00, 0x00])
+
+class Custom_data:
+    """
+    # NOT IMPLEMENTED YET
+
+    handles all custom data parameters within SSPM objects.
+    """
+    pass
+    #raise NotImplementedError("class not implemented yet.")
+
+@dataclass
+class SSPM:
+    """
+    # SSPM
+    Class that contains all parsed logic witihin sspm v1, v2 filetypes
+
+    ```
+    # basic use case
+    sspm = SSPM(
+        map_name='author name - song name',
+        difficulty='na',
+        mappers=["DigitalDemon", "Fog"],
+        notes=[(1.5, 1.2, 500), (1, 2, 1262), (2, 0, 1423)]
+        )
+    
+    ```
+
+    - `map_name:` (Required) name of the SSPM map | Standard is `author name - song name`
+    - `difficulty:` (Required) registered level difficulty. use difficulty.value to get intiger
+    - `mappers:` (Required) list of mappers who contributed/created SSPM level
+    - `notes:` (Required) list of notes to be played in SSPM.
+    - `note_hash:` calculated on write
+    - `song_name:` name of mp3/ogg song unless modified
+    - `cover_bytes:` raw bytes of png image, does not support apng format. (Read SSPMV2 documentation)
+    - `audio_bytes:` raw bytes of mp3/ogg audio.
+    - `map_id:` Calculated on write() | unique identifier used in rhythia for your map | can be overwritten (not recommended)
+    - `map_rating:` ? rating system within game ? | (Please reach out to me if you know what this actually does within rhythia)
+    - `quantum:` Calculated on write() | determines if level contains "float value" notes.
+    - `requires_mod:` ? if map requires any mods ? | (Please reach out to me if you know what this actually does within rhythia)
+    - `header:` Calculated on runtime. handles signature, version and reserve bytes
+    - `_use_strict:` Enforces stricter handling of IO. use only if map is rendered corrupt by rhythia. | last resort
+    - `metadata:` W.I.P | Does not do anything
+
+    > Note: for any extra information, read V2 documentation: https://github.com/basils-garden/types/blob/main/sspm/v2.md#data-type-values 
+    """
+    INVALID_CHARS = {'/', '\\', ':', '*', '?', '"', '<', '>', '|'}
+
+
+    difficulty: Literal["na", "easy", "medium", "hard", "logic", "tasukete", "brrrrr"]
+    map_name: str
+    mappers: List[str]
+    notes: List[Tuple[int | float, int | float, int]]
+
+
+    export_offset: int  = 0
+    last_ms: int        = 0
+    song_name: str      = '' # set to map_name if defaulted
+    map_rating: int     = 0
+    quantum: bool       = False
+    map_id: str         = ''
+    cover_bytes: bytes  = b''
+    audio_bytes: bytes  = b''
+    requires_mod: bool  = False
+    header: bytes       = field(default_factory=lambda: Header)  # make this safe
+    metadata: Dict      = field(default_factory=dict)           # avoids mutable default
+    note_hash: Annotated[bytes, 20] = b""
+
+    _use_strict: bool   = False
+
+    def __post_init__(self):
+        if len(self.note_hash) > 20:
+            raise ValueError("note_hash must be SHA-1 HASH at exactly 20 bytes")
+
+        if not isinstance(self.difficulty, Difficulty):
+            if isinstance(self.difficulty, str):
+                self.difficulty = Difficulty[self.difficulty]
+            elif isinstance(self.difficulty, int):
+                self.difficulty = Difficulty(self.difficulty)
+            else:
+                raise ValueError(f"Invalid difficulty: {self.difficulty}")
+
+        if self.song_name == '':
+            self.song_name = self.map_name
+
+    def write(self, filename: str, **kwargs) -> None:
+        """
+        Creates a SSPM v2 file based on variables passed in, or already set. <br>
+        If no filepath is passed in, it will return file as bytes
+        <br>
+        Variables that need to be covered:
+        1. `coverBytes`: Cover image in bytes form, or None
+        2. `audioBytes`: Audio in bytes form, or None
+        3. `Difficulty`: one of Difficulties dictionary options, or 0x00 - 05 OR "N/A", "Easy", "Medium", "Hard", "Logic", "Tasukete"
+        4. `mapName`: The name of the map. Rhythia guidelines suggests `artist name - song name`
+        5. `mappers`: a list of strings containing the mapper(s)
+        6. `notes`: a list of tuples as shown below
+        7. `forcemapid`: if enabled, overwrite mapId to be added instead | otherwise defaults to mappers + map name | make sure its only ASCII characters
+        ```python
+        # (x, y, ms)
+        self.notes = [
+            (1, 2, 1685), # X, Y, MS
+            (1.22521, 0.156781, 2000)
+        ]#...
+        ```
+        <br>
+        `**kwargs`: pass in any of the variables shown above.
+        
+        Example usage:
+
+        ```python
+        from sspmLib import SSPMParser
+        
+        sspm = SSPMParser()
+        sspm.ReadSSPM(file_path) # reads
+        sspm.Difficulty = 5 # changes difficulty to Tasukete
+        
+        with open(output_path+".sspm", "wb") as f:
+            f.write(sspm.WriteSSPM())
+        ```
+        """
+        from pysspm_rhythia.parser import write_sspm
+        return write_sspm(self, filename=filename, **kwargs)
+        
+        raise NotImplementedError('This method is not implemented yet.') # keep in case
+
+    def write_sspm(self, filename: str, **kwargs) -> None:
+        """Wrapper class for SSPM.write() | Functions the same"""
+        self.write(filename=filename, **kwargs)
+
+    def NOTES2TEXT(self) -> str:
+        """
+        Converts Notes to the standard sound space text file form. Commonly used in Roblox sound space
+        """
+        textString = ''
+        for x, y, ms in self.notes:
+            if textString == '':
+                textString+=f",{x}|{y}|{ms}"
+            else:
+                textString+=f",{x}|{y}|{ms}"
+            
+        return textString
+
+    def has_cover(self) -> bool:
+        return True if self.cover_bytes else False
+    
+    def has_audio(self) -> bool:
+        return True if self.audio_bytes else False    
+
+def write_sspm() -> SSPM:
+    """
+    A helper function for writing SSPM class
+
+    Note: not implemented yet... Use direct `SSPM()` class call, then SSPM.write() to render. 
+    """
+    
+    raise NotImplementedError("write_sspm not implemented yet. Use direct `SSPM()` class call, then SSPM.write() to render")
+
+
+def read_sspm(file: str | BinaryIO, debug: bool = False, _use_strict: bool = False):
+    """
+    Reads and processes any SSPM file. <br>
+    `File:` Takes in directory of sspm, or BinaryIO object stored in memory.
+    `debug:` Useful for getting readable outputs of steps taken.
+    `_use_strict:` enforces strict handling. use only if map corrupts when loading in other programs..
+
+    
+    SSPM (Sound space plus map file) version 1 read is now supported (T.Y fog), however legacy v1 file write out is not.
+    <br><br>
+    
+
+    ### Returns:
+    1. `coverBytes` if cover was found
+    2. `audioBytes` if audio was found
+    3. `Header`: {"Signature": ..., "Version": ...}
+    4. `Hash`: a SHA-1 hash of the markers in the map
+    5. `mapID`: A unique combination using the mappers and map name*. 
+    6. `mappers`: a list containing each mapper.
+    7. `mapName`: The name given to the map.
+    8. `songName`: The original name of the audio before imported. Usually left as artist name - song name
+    9. `customValues`: NOT IMPLEMENTED | will return a dictionary of found custom blocks.
+    10. `isQuantum`: Determins if the level contains ANY float value notes.
+    11. `Notes`: A list of tuples containing all notes. | 
+    Example of what it Notes is: `[(x, y, ms), (x, y, ms), (x, y, ms) . . .]`
+
+    ```
+    import pysspm_rhythia as pysspm
+
+    sspm_file = pysspm.ReadSSPM("0a0cd80b7c2ef2672d603f225ee9a372f75698ec.sspm") # SSPM object
+    # you can handle SSPM however you want
+    ```
+    <br><br>
+    > ***Returns `SSPM` object***
+    """
+
+    coverBytes = None
+    audioBytes = None
+
+    if isinstance(file, str): # If its a directory we convert it.
+        with open(file, "rb") as f:
+            fileBytes = BytesIO(f.read())
+    else:
+        fileBytes = file
+
+    # handle the header files
+    header = Header()
+    header.signature = fileBytes.read(4)
+    header.version = 2 if fileBytes.read(2) == b'\x02\x00' else 1 # \x02\x00
+    header.reserve = fileBytes.read(4) if header.version == 2 else fileBytes.read(2)
+
+    # File check to make sure everything in the header is A-OK
+    if debug:
+        print("SSPM Version: ", header.version)
+
+    if header.signature != b"\x53\x53\x2b\x6d": # SS+M as bytes
+        raise TypeError("SS+M signature type was not found. What was found instead:", header.signature)
+    
+    match header.version: # cleaner implementation
+        case 2:
+            from pysspm_rhythia.parser import _ProcessSSPMV2
+            return _ProcessSSPMV2(fileBytes, header, _use_strict)
+        case 1:
+            from pysspm_rhythia.parser import _ProcessSSPMV1
+            return _ProcessSSPMV1(fileBytes)
+        case _:
+            raise ValueError("SSPM version does not match known versions. Versions (1, 2) FOUND:", header.version)
+
+
+# Deprecated codebase. Keep in case
 
 class SSPMParser:
     """
-    # SSPM Reader
+    # DEPRECATED CODE
 
     ### reads and converts Sound space plus maps into many other readable forms.
 
@@ -58,6 +300,8 @@ class SSPMParser:
         "Tasukete": 0x05,
     }
 
+    print(DeprecationWarning("this class has been deprecated in V2. Please use SSPM() directly, or read_sspm() instead."))
+
     def __init__(self):
         self.exportOffset = 0
         self.Header = bytes([ # base header
@@ -65,19 +309,19 @@ class SSPMParser:
             0x02, 0x00, # SSPM format version (0x02 or 0x01) Set to 2 by default
             0x00, 0x00, 0x00, 0x00, # 4 byte reserved space.
         ])
-        self.lastMs = None
+        self.last_ms = None
         self.metadata = {}
-        self.songName = None
+        self.song_name = None
         self.requiresMod = 0
         self.strict = False
         self.coverBytes = None
-        self.Difficulty = 0
+        self.difficulty = 0
         self.audioBytes = None
-        self.mapName = None
+        self.map_name = None
         self.mappers = None
         self.Notes = None
-        self.mapID = None
-        self.customDataOffset = 0
+        self.map_id = None
+        self.custom_data_offset = 0
 
     def _GetNextVariableString(self, data: BinaryIO, fourbytes: bool = False, encoding: str = "ASCII", V2: bool = True) -> str: # Why did this have a self variable??
         # Read 2 bytes for length (assuming little-endian format)
@@ -88,8 +332,12 @@ class SSPMParser:
         
         # Read the string of the determined length
         finalString = data.read(lengthF)
+        try: # game changed encoding to support BOTH ASCII & UTF-8
+            fsd = finalString.decode(encoding=encoding)
+        except:
+            fsd = finalString.decode(encoding='utf-8')
         
-        return finalString.decode(encoding=encoding)
+        return fsd
     
     def _NewLineTerminatedString(self, data: BinaryIO, encoding: str = "ASCII") -> str: # for SSPMv1
 
@@ -100,7 +348,12 @@ class SSPMParser:
                 break
             finalString.extend(stringbyte)
         
-        return finalString.decode(encoding=encoding)
+        try: # game changed encoding to support BOTH ASCII & UTF-8 for wider language support
+            fsd = finalString.decode(encoding=encoding)
+        except:
+            fsd = finalString.decode(encoding='utf-8')
+        
+        return fsd
 
     
     def WriteSSPM(self, filename: str = None, forcemapid=False, debug: bool = False, **kwargs) -> bytearray | NoneType:
@@ -153,36 +406,36 @@ class SSPMParser:
         ])
 
         # configs
-        self.containsCover = b"\x01" if self.coverBytes != None else b"\x00" # 0 or 1
-        self.containsAudio = b"\x01" if self.audioBytes != None else b"\x00" # 0 or 1
+        self.contains_cover = b"\x01" if self.coverBytes != None else b"\x00" # 0 or 1
+        self.contains_audio = b"\x01" if self.audioBytes != None else b"\x00" # 0 or 1
         self.requiresMod = b"\x01" if self.requiresMod == 1 or self.requiresMod == b"\x01" else b"\x00" # Who actually uses this though?
         
         #print(self.Notes[-1][2])
-        self.lastMs = np.uint32(self.Notes[-1][2]).tobytes()  # np.uint32 object thus far | 4 bytes | base before getting proper one
+        self.last_ms = np.uint32(self.Notes[-1][2]).tobytes()  # np.uint32 object thus far | 4 bytes | base before getting proper one
         self.noteCount = np.uint32(len(self.Notes)).tobytes() # bytes should be length of 4
         self.markerCount = self.noteCount # nothing changed from last time
 
-        self.Difficulty = self.Difficulty if self.DIFFICULTIES.get(self.Difficulty) == None else self.DIFFICULTIES.get(self.Difficulty)
-        self.Difficulty = self.Difficulty.to_bytes(1, 'little') if isinstance(self.Difficulty, int) else self.Difficulty
+        self.difficulty = self.difficulty if self.DIFFICULTIES.get(self.difficulty) == None else self.DIFFICULTIES.get(self.difficulty)
+        self.difficulty = self.difficulty.to_bytes(1, 'little') if isinstance(self.difficulty, int) else self.difficulty
 
         if debug:
             print("Metadata loaded")
 
         # good until here
-        #self.mapID = 
-        self.songName = "sspmLib Song - author".encode("ASCII") if not self.songName else self.songName.encode("ASCII")
+        #self.map_id = 
+        self.song_name = "sspmLib Song - author".encode("ASCII") if not self.song_name else self.song_name.encode("ASCII")
 
         if not forcemapid:
-            self.mapID = f"{'_'.join(self.mappers)}_{self.mapName.replace(' ', '_')}".encode("ASCII") # combines mappers and map name to get the id.
+            self.map_id = f"{'_'.join(self.mappers)}_{self.map_name.replace(' ', '_')}".encode("ASCII") # combines mappers and map name to get the id.
         else:
-            self.mapID = self.mapID.encode("ASCII")
+            self.map_id = self.map_id.encode("ASCII")
             
-        self.mapIDf = len(self.mapID).to_bytes(2, 'little')
-        self.mapName = self.mapName.encode("ASCII")
-        self.mapNameF = len(self.mapName).to_bytes(2, 'little')
-        self.songNameF = len(self.songName).to_bytes(2, 'little')
+        self.map_idf = len(self.map_id).to_bytes(2, 'little')
+        self.map_name = self.map_name.encode("ASCII")
+        self.map_nameF = len(self.map_name).to_bytes(2, 'little')
+        self.song_nameF = len(self.song_name).to_bytes(2, 'little')
 
-        self.mapperCountf = len(self.mappers).to_bytes(2, 'little')
+        self.mapper_countf = len(self.mappers).to_bytes(2, 'little')
         #self.mappersf = '\n'.join(self.mappers).encode('ASCII') # Possible bug | maybe include breakchar like \n
         mappersf = bytearray()
 
@@ -203,11 +456,11 @@ class SSPMParser:
         # Store the result in the instance variable
         self.mappersf = bytes(mappersf)
 
-        self.strings = self.mapIDf+self.mapID+self.mapNameF+self.mapName+self.songNameF+self.songName+self.mapperCountf+self.mappersf # merge values into a string because we are done with this section
+        self.strings = self.map_idf+self.map_id+self.map_nameF+self.map_name+self.song_nameF+self.song_name+self.mapper_countf+self.mappersf # merge values into a string because we are done with this section
         if debug:
             print("Strings loaded")
 
-        self.customData = b"\x00\x00" # 2 bytes, no custom data supported right neoww
+        self.custom_data = b"\x00\x00" # 2 bytes, no custom data supported right neoww
 
         # FEATURE REQUEST: Add support for custom difficulty here.
 
@@ -218,39 +471,6 @@ class SSPMParser:
             print("1/2 pointers loaded. Note creation next")
 
         self.Markers = b''
-
-        """ # Old slow code. Keep in case
-        count = 0
-        totalNotes = len(self.Notes)
-        for nx, ny, nms in self.Notes:
-            count+=1
-            if debug and count % 1000 == 0:
-                print(f"Notes completed: {count}/{totalNotes}", end="\r", flush=True)
-            # Equivalent to: BitConverter.GetBytes((uint)(note.Ms + exportOffset))
-            ms = (np.uint32(nms + self.exportOffset)).tobytes()
-
-            # Equivalent to: new byte[1] (initialized to 0x00)
-            markerType = b'\x00'
-
-            # Equivalent to: Math.Round(note.X) == Math.Round(note.X, 2)
-            xyInt = round(nx) == round(nx, 2) and round(ny) == round(ny, 2)
-
-            # Equivalent to: new byte[] { (byte)(xyInt ? 0x00 : 0x01) }
-            identifier = b'\x00' if xyInt else b'\x01'
-
-            # Equivalent to: Convert x and y based on whether they are integers
-            if xyInt:
-                x = np.uint16(round(nx)).tobytes()[0:1]
-                y = np.uint16(round(ny)).tobytes()[0:1]
-            else:
-                x = np.float32(nx).tobytes()
-                y = np.float32(ny).tobytes()
-
-            # Equivalent to: Concatenate ms, markerType, identifier, x, and y
-            finalMarker = ms + markerType + identifier + x + y
-
-            # Add to the markers list
-            self.Markers += finalMarker"""
 
         count = 0
         totalNotes = len(self.Notes)
@@ -286,29 +506,29 @@ class SSPMParser:
             final_marker = ms_bytes + marker_type + identifier + x_bytes + y_bytes
             markers.extend(final_marker)
         
-        self.lastMs = np.uint32(lastms).tobytes() # because list is not in order.
+        self.last_ms = np.uint32(lastms).tobytes() # because list is not in order.
 
         if debug:
             print("All pointers finished")
 
 
         # adding everything together
-        metadata = self.lastMs + self.noteCount + self.markerCount + self.Difficulty + b"\x00\x00" + self.containsAudio + self.containsCover + self.requiresMod # level rating Not fully implemented yet 
+        metadata = self.last_ms + self.noteCount + self.markerCount + self.difficulty + b"\x00\x00" + self.contains_audio + self.contains_cover + self.requiresMod # level rating Not fully implemented yet 
         offset = len(self.Header) + 20 + len(metadata) + 80 + len(self.strings)
         # pointers
-        self.customDataOffset = np.uint64(offset).tobytes()
-        self.customDataLength = np.uint64(len(self.customData)).tobytes()
-        offset+= len(self.customData)
+        self.custom_data_offset = np.uint64(offset).tobytes()
+        self.custom_dataLength = np.uint64(len(self.custom_data)).tobytes()
+        offset+= len(self.custom_data)
 
-        
+        # bugfix: Misread documentation
         self.audioOffset = np.uint64(offset).tobytes()
-        self.audioLength = np.uint64(len(self.audioBytes)).tobytes() if self.containsAudio == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found | Possible bug if no audio found, and reading special block fails. | may default to start of file.
-        offset+= len(self.audioBytes) if self.containsAudio == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
+        self.audioLength = np.uint64(len(self.audioBytes)).tobytes() if self.contains_audio == b'\x01' else b''#b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found | Possible bug if no audio found, and reading special block fails. | may default to start of file.
+        offset+= len(self.audioBytes) if self.contains_audio == b'\x01' else 0 # len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
         self.audioBytes = b'' if self.audioBytes == None else self.audioBytes
 
         self.coverOffset = np.uint64(offset).tobytes()
-        self.coverLength = np.uint64(len(self.coverBytes)).tobytes() if self.containsCover == b'\x01' else b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found 
-        offset+= len(self.coverBytes) if self.containsCover == b'\x01' else len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
+        self.coverLength = np.uint64(len(self.coverBytes)).tobytes() if self.contains_cover == b'\x01' else b''#b'\x00\x00\x00\x00\x00\x00\x00\x00' # 8 bytes filler if no audio length found 
+        offset+= len(self.coverBytes) if self.contains_cover == b'\x01' else 0#len(b'\x00\x00\x00\x00\x00\x00\x00\x00') # 8
         self.coverBytes = b'' if self.coverBytes == None else self.coverBytes
 
         self.NoteDefinition = "ssp_note".encode("ASCII")
@@ -331,18 +551,18 @@ class SSPMParser:
         sHash = sha1(self.markerSet).digest()
 
         pointers = b''
-        pointers+=self.customDataOffset+self.customDataLength+self.audioOffset+self.audioLength+self.coverOffset+self.coverLength+self.markerDefinitionsOffset+self.markerDefinitionsLength+self.markerOffset+self.markerLength
+        pointers+=self.custom_data_offset+self.custom_dataLength+self.audioOffset+self.audioLength+self.coverOffset+self.coverLength+self.markerDefinitionsOffset+self.markerDefinitionsLength+self.markerOffset+self.markerLength
 
         if debug:
-            print(self.lastMs)
+            print(self.last_ms)
             print(metadata)
             print(pointers)
             print(self.strings)
-            print(self.customData)
+            print(self.custom_data)
             print(self.audioBytes[0:10])
             print(self.coverBytes[0:10])
 
-        self.SSPMData = self.Header+sHash+metadata+pointers+self.strings+self.customData+self.audioBytes+self.coverBytes+self.markerDefinitions+self.Markers
+        self.SSPMData = self.Header+sHash+metadata+pointers+self.strings+self.custom_data+self.audioBytes+self.coverBytes+self.markerDefinitions+self.Markers
         
         if filename:
             with open(filename, 'wb') as f:
@@ -419,42 +639,42 @@ class SSPMParser:
         # static metadata
 
         self.Hash = fileBytes.read(20)
-        self.lastMs = int.from_bytes(fileBytes.read(4), 'little') # 32bit uint
+        self.last_ms = int.from_bytes(fileBytes.read(4), 'little') # 32bit uint
         self.noteCount = fileBytes.read(4) # 32bit uint
         self.markerCount = fileBytes.read(4) # No clue what this is, ill figure it out | 32bit uint
         
-        self.Difficulty = fileBytes.read(1) # 0x00 01 02 03 04 05
+        self.difficulty = fileBytes.read(1) # 0x00 01 02 03 04 05
         self.mapRating = fileBytes.read(2) # 16bit uint
-        self.containsAudio = fileBytes.read(1) # 0x00 01?
-        self.containsCover = fileBytes.read(1) # 0x00 01?
+        self.contains_audio = fileBytes.read(1) # 0x00 01?
+        self.contains_cover = fileBytes.read(1) # 0x00 01?
         self.requiresMod = fileBytes.read(1) # 0x00 01?
 
         # pointers | If not present then is left as 8 bytes of 0
-        self.customDataOffset = fileBytes.read(8)
-        self.customDataLength = fileBytes.read(8)
-        self.audioOffset = fileBytes.read(8)
-        self.audioLength = fileBytes.read(8)
-        self.coverOffset = fileBytes.read(8)
-        self.coverLength = fileBytes.read(8)
+        self.custom_data_offset = fileBytes.read(8)
+        self.custom_dataLength = fileBytes.read(8)
+        self.audioOffset = fileBytes.read(8) if self.contains_audio[0] == 1 else None
+        self.audioLength = fileBytes.read(8) if self.contains_audio[0] == 1 else None
+        self.coverOffset = fileBytes.read(8) if self.contains_cover[0] == 1 else None
+        self.coverLength = fileBytes.read(8) if self.contains_cover[0] == 1 else None
         self.markerDefinitionsOffset = fileBytes.read(8)
         self.markerDefinitionsLength = fileBytes.read(8)
         self.markerOffset = fileBytes.read(8)
         self.markerLength = fileBytes.read(8)
 
         # VariableLength Items..
-        self.mapID = self._GetNextVariableString(fileBytes).replace(",", "")
-        self.mapName = self._GetNextVariableString(fileBytes)
-        self.songName = self._GetNextVariableString(fileBytes)
+        self.map_id = self._GetNextVariableString(fileBytes).replace(",", "")
+        self.map_name = self._GetNextVariableString(fileBytes)
+        self.song_name = self._GetNextVariableString(fileBytes)
 
-        for i in range(len(self.mapID)): # getting mapID
-            if self.mapID[i] in self.INVALID_CHARS: # Create invalidChars thing
-                self.mapID = self.mapID[:i] + '_' + self.mapID[i+1:]
+        for i in range(len(self.map_id)): # getting mapID
+            if self.map_id[i] in self.INVALID_CHARS: # Create invalidChars thing
+                self.map_id = self.map_id[:i] + '_' + self.map_id[i+1:]
         
         mapperCount = fileBytes.read(2)
-        self.mapperCountFloat = int.from_bytes(mapperCount, byteorder="little") #np.uint16(mapperCount)
+        self.mapper_countFloat = int.from_bytes(mapperCount, byteorder="little") #np.uint16(mapperCount)
         self.mappers = [] # for now
         
-        for i in range(self.mapperCountFloat): # Can have multiple mappers in a file.
+        for i in range(self.mapper_countFloat): # Can have multiple mappers in a file.
             
             if True:
             #try: # temporary solution until I figure out whats happening
@@ -464,9 +684,9 @@ class SSPMParser:
         try:
             # Oh god Custom data.... | Only supports custom difficulty thus far
             customData = fileBytes.read(2) # ??
-            self.customDataTotalLength = np.uint16(customData)
+            self.custom_dataTotalLength = np.uint16(customData)
             
-            for i in range(self.customDataTotalLength):
+            for i in range(self.custom_dataTotalLength):
                 field = self._GetNextVariableString(fileBytes)
                 id = fileBytes.read(1)
                 if id[0] == "\x00": # no 0x08 and 0x0a according to SSQE...
@@ -495,7 +715,7 @@ class SSPMParser:
                     break
                 elif id[0] == "\x09": # Custom difficulty. NOT FULLY IMPLEMENTED
                     if self.strict:
-                        warn("Custom difficulty in V2 and V1 Not supported. Was found in sspm. View raw form by using .CustomDifficulty @self", Warning)
+                        warn("Custom difficulty in V2 and V1 Not fully supported. Was found in sspm. View raw form by using .CustomDifficulty @self", Warning)
                     self.CustomDifficulty = self._GetNextVariableString(fileBytes)
                     
                 elif id[0] == "\x0a":
@@ -518,22 +738,23 @@ class SSPMParser:
         except Exception as e:
             if self.strict:
                 warn("Couldnt properly read customData in V2/V1 sspm. Fell back to audio pointer", BytesWarning)
-    
-        # If all fails, fallback to audio pointer
-        self.audioOffsetF = np.int64(int.from_bytes(self.audioOffset, byteorder='little'))
-        
-        # Get pointer from bytes
-        fileBytes.seek(self.audioOffsetF)
+
+        if self.contains_audio[0] == 1:
+            # If all fails, fallback to audio pointer
+            self.audioOffsetF = np.int64(int.from_bytes(self.audioOffset, byteorder='little'))
+            
+            # Get pointer from bytes
+            fileBytes.seek(self.audioOffsetF)
 
         # reading optional data...
-        #print(self.containsAudio[0])
-        if self.containsAudio[0] == 1: # found audio
+        #print(self.contains_audio[0])
+        if self.contains_audio[0] == 1: # found audio
             self.totalAudioLengthF = np.int64(int.from_bytes(self.audioLength, 'little'))
             
             self.audioBytes = fileBytes.read(self.totalAudioLengthF)
             #print(fileBytes.tell())
 
-        if self.containsCover[0] == 1: # True
+        if self.contains_cover[0] == 1: # True
             self.totalCoverLengthF = np.int64(int.from_bytes(self.coverLength, 'little'))
             #print(self.totalCoverLengthF)
             self.coverBytes = fileBytes.read(self.totalCoverLengthF)
@@ -541,7 +762,7 @@ class SSPMParser:
 
 
         # LAST ANNOYING PART!!!!!! MARKERS..
-        self.mapData = self.mapID
+        self.mapData = self.map_id
 
         # Reading markers
         self.hasNotes = False
@@ -617,136 +838,4 @@ class SSPMParser:
                 textString+=f",{x}|{y}|{ms}"
             
         return textString
-
-    
-    def _ProcessSSPMV1(self, fileBytes: BinaryIO):
-        """
-        just going to note, i will be using some of the self variables
-        for compatibility with SSPMv2 (such as containsAudio, etc), and 
-        i will also be formatting theoutput like SSPMv2, such as splitting 
-        mappers by comma to make it into an array
-
-                                                                -fog
-        """
-
-
-        # start of metadata
-
-        self.mapID = self._NewLineTerminatedString(fileBytes).replace(",", "")
-        self.mapName = self._NewLineTerminatedString(fileBytes)
-        self.songName = self.mapName # lol
-        self.mappers = self._NewLineTerminatedString(fileBytes).split(", ") # mappers arent in an array, so i will just split
-
-        self.lastMs = fileBytes.read(4)
-        self.noteCount = fileBytes.read(4)
-        self.Difficulty = fileBytes.read(1)
-
-        # end of metadata
-        
-        # start of file data
-
-        self.coverType = int.from_bytes(fileBytes.read(1), byteorder='little')
-
-        self.containsCover = None
-        self.coverLength = None
-        self.coverBytes = None
-
-        match self.coverType:
-            case 2: # PNG
-                self.containsCover = b"\x01"
-
-                self.coverLength = fileBytes.read(8)
-                coverLengthtoInt = np.int64(int.from_bytes(self.coverLength, 'little'))
-
-                self.coverBytes = fileBytes.read(coverLengthtoInt)
-            case _: # for no cover, or non supported format
-                self.containsCover = b"\x00"
-
-        self.audioType = int.from_bytes(fileBytes.read(1), 'little')
-
-        self.containsAudio = None
-        self.audioLength = None
-        self.audioBytes = None
-
-        match self.audioType:
-            case 0: # no Audio
-                self.containsAudio = b"\x00"
-            case 1: # Audio! :)
-                self.containsAudio = b"\x01"
-
-                self.audioLength = fileBytes.read(8)
-                audioLengthtoInt = int.from_bytes(self.audioLength, 'little')
-
-                self.audioBytes = fileBytes.read(audioLengthtoInt) # must be mp3 or OGG
-
-        # end of file data
-
-        # start of note data
-
-        noteCounttoInt = int.from_bytes(self.noteCount, 'little')
-        Notes = []
-        isQuantumChecker = False
-
-        for i in range(noteCounttoInt):
-            ms = fileBytes.read(4)
-            
-            # i can just copy and paste the rest of this since its the same
-
-            isQuantum = int.from_bytes(fileBytes.read(1), 'little')
-
-            xF = None
-            yF = None
-
-            if isQuantum == 0:
-                x = int.from_bytes(fileBytes.read(1), 'little')
-                y = int.from_bytes(fileBytes.read(1), 'little')
-                xF = x
-                yF = y
-
-            else:
-                isQuantumChecker = True
-
-                x = fileBytes.read(4)
-                y = fileBytes.read(4)
-
-                xF = np.frombuffer(x, dtype=np.float32)[0]
-                yF = np.frombuffer(y, dtype=np.float32)[0]
-            
-            msF = np.uint32(int.from_bytes(ms, 'little'))
-
-            Notes.append((xF, yF, msF))
-
-        
-        self.Notes = sorted(Notes, key=lambda n: n[2]) # Sort by time
-        self.isQuantum = isQuantumChecker
-
-        return self
-        
-
-
-
-
-
-
-"""    def _GetNextVariableString(self, data: BinaryIO, fourbytes: bool = False) -> str:
-        length = data.read(2)
-        length = length.rstrip("\x00")
-        lengthF = np.uint32(length) if fourbytes else np.int16(length)
-        
-        finalString = data.read(lengthF)
-        return finalString.decode("ASCII")
-"""
-
-"""
-        bytes_list = []
-
-        current_byte = data.read(1)
-
-        while current_byte != b'\x0a':  # 0x0a is the ASCII code for newline ('\n')
-            bytes_list.append(current_byte[0])
-            current_byte = data.read(1)
-
-        return bytes(bytes_list).decode('ascii') # ONLY SUPPORTS ASCII
-"""
-
 
