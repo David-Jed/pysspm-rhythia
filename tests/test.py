@@ -33,9 +33,11 @@ def test_read_write_sspm(): # Writing a new SSPM file from parsed notes
 
     # comparing values between first and second. should all be the same
     assert first.audio_bytes == second.audio_bytes
+    assert first.audio_bytes == second.audio_bytes
     print("Audio checked")
     assert first.notes == second.notes
     print("Notes checked")
+    assert first.last_ms == second.last_ms
     assert first.last_ms == second.last_ms
     print("lastMs checked")
     assert first.cover_bytes == second.cover_bytes
