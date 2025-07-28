@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
     # Load the SSPM data
     parser = SSPMParser()
-    parser.ReadSSPM(r"C:/Users/*/AppData/Roaming/SoundSpacePlus/maps/teft2oo_tn-shi_-_contradiction.sspm")
+    parser.ReadSSPM(r"C:/Users/*/AppData/Roaming/SoundSpacePlus/maps/obsiid_rachie_x_will_stetson_-_mesmerizer.sspm")
 
     # Instantiate the classifier
     classifier = NoteClassifier(parser.Notes, time_multiplier=1)
