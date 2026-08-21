@@ -1,11 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
   workflow_call:      # lets the release workflow reuse this exact gate
+
+# Deliberately no `push` trigger on main. publish.yml already calls this
+# workflow on every push to main, and both runs would land in the concurrency
+# group below and cancel each other -- leaving a spurious red X on the commit.
 
 concurrency:
   group: ci-${{ github.ref }}

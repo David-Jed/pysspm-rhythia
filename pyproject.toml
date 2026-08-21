@@ -40,8 +40,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/David-Jed/pysspm"
-Issues = "https://github.com/David-Jed/pysspm/issues"
+Homepage = "https://github.com/David-Jed/pysspm-rhythia"
+Issues = "https://github.com/David-Jed/pysspm-rhythia/issues"
 
 [tool.setuptools.dynamic]
 version = { attr = "pysspm_rhythia.__version__.__version__" }

@@ -75,8 +75,10 @@ jobs:
       - name: Publish to PyPI
         # Trusted Publishing -- no API token stored in the repo.
         # Configure at https://pypi.org/manage/project/pysspm-rhythia/settings/publishing/
-        #   Owner: David-Jed | Repo: pysspm
+        #   Owner: David-Jed | Repo: pysspm-rhythia
         #   Workflow: publish.yml | Environment: pypi
+        # The repo was renamed from `pysspm`; the OIDC claim carries the current
+        # name, so a publisher registered against `pysspm` will not match.
         # To use an API token instead, delete this step and add:
         #   with:
         #     password: ${{ secrets.PYPI_API_TOKEN }}
