@@ -4,6 +4,8 @@ Binary readers/writers for the SSPM container.
 Layouts follow the upstream specs:
 - v2: https://github.com/basils-garden/types/blob/main/sspm/v2.md
 - v1: https://github.com/basils-garden/types/blob/main/sspm/v1.md
+
+Soon-to-be-supported Pheonyx & video formats. (once I find specs)
 """
 
 from hashlib import sha1
