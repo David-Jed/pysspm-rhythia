@@ -5,7 +5,7 @@ from types import NoneType
 import numpy as np
 from collections import defaultdict
 import math
-from pysspm import SSPMParser
+from pysspm_rhythia.pysspm import SSPMParser
 
 def calcObsiidRating(self: SSPMParser, notes: list = None) -> SSPMParser:
     """
@@ -284,15 +284,15 @@ def blend_colors(colors):
 
 
 if __name__ == "__main__":
-    from pysspm_rhythia import SSPMParser
+    from pysspm_rhythia import read_sspm
     import math
 
     # Load the SSPM data
-    parser = SSPMParser()
-    parser.ReadSSPM(r"C:/Users/*/AppData/Roaming/SoundSpacePlus/maps/obsiid_rachie_x_will_stetson_-_mesmerizer.sspm")
+    
+    beatmap = read_sspm(r"C:\Users\david\AppData\Roaming\SoundSpacePlus\maps\teft2oo_tn-shi_-_contradiction.sspm")
 
     # Instantiate the classifier
-    classifier = NoteClassifier(parser.Notes, time_multiplier=1)
+    classifier = NoteClassifier(beatmap.notes, time_multiplier=1)
 
     # Classify patterns
     patterns = classifier.classify_patterns()
@@ -335,9 +335,12 @@ if __name__ == "__main__":
         "short-slide": "#0055E3",
         "medium-slide": "#E355E3",
     }
+    file = r"C:\Users\david\AppData\Roaming\SoundSpacePlus\colorsets\whatwedidinthedessertvisiontest.txt"
 
     # Write color-coded output to a file
-    with open(r"C:\Users\*\AppData\Roaming\SoundSpacePlus\colorsets\whatwedidinthedessertvisiontest.txt", "w") as f:
+    with open(file, 'a') as f:
+        f.write("")
+    with open(file, "w") as f:
         # Iterate over all notes
         for note in patterns:
             classifications = note.classifications
@@ -352,7 +355,3 @@ if __name__ == "__main__":
 
                 # Write the blended color to the file
                 f.write(f"{color}\n")
-
-
-
-print("finished")
